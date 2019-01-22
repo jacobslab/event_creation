@@ -57,6 +57,7 @@ def determine_groups(protocol, subject, full_experiment, session, transfer_cfg_f
     groups += (exp_type, experiment)
 
     groups += tuple(args)
+    groups += ('system_2', )
 
     return groups
 
@@ -212,7 +213,6 @@ def build_micro_pipeline(subject, montage, experiment, session, protocol='r1', g
 
     groups = determine_groups(protocol, code, experiment, original_session,
                               TRANSFER_INPUTS['micro'], 'transfer', *groups, **kwargs)
-    # groups += ('system_2', 'TH', 'transfer')
 
     transferer = generate_micro_transferer(subject, experiment, session, protocol, groups + ('transfer',),
                                            code=code,
