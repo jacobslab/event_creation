@@ -92,6 +92,9 @@ options:
   - dest: show_plots
     arg: show-plots
     help: 'Show plots of fit and residuals when aligning data (not available when running with sudo)'
+  - dest: align-micros
+    arg: align-micros
+    help: 'Aligns events with ns6 file instead of ns2'
   - dest: inputs
     arg: set-input
     action: append

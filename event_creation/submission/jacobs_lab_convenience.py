@@ -289,7 +289,7 @@ def attempt_importers(importers, force):
     return success, importers[:i+1]
 
 
-def run_session_import(kwargs, do_import=True, do_convert=False, force_events=False, force_eeg=False):
+def run_session_import(kwargs, do_import=True, do_convert=False, force_events=False, force_eeg=False, align_micros=False):
     """
     :param kwargs:
     :param do_import:
@@ -303,7 +303,7 @@ def run_session_import(kwargs, do_import=True, do_convert=False, force_events=Fa
     successes = [True]
 
     if do_import:
-        if kwargs['align_micros']:
+        if align_micros:
             ephys_builder = Importer(Importer.BUILD_MICROS, **kwargs)
         else:
             ephys_builder = Importer(Importer.BUILD_EPHYS,**kwargs)
@@ -918,7 +918,8 @@ def main():
         exit(0)
 
     inputs = prompt_for_session_inputs(**config.options)
-
+    if config.align_micros:
+        inputs['align_micros'] = True
 
     if session_exists(inputs['protocol'], inputs['subject'], inputs['new_experiment'], inputs['session']):
         if not confirm('{subject} {new_experiment} session {session} already exists. '
@@ -927,7 +928,7 @@ def main():
             exit(0)
     print('Importing session')
     success, importers = run_session_import(inputs, attempt_import, attempt_convert, config.force_events,
-                                        config.force_eeg)
+                                        config.force_eeg, config.align_micros)
     if success:
         print("Aggregating indexes...")
         IndexAggregatorTask().run_single_subject(inputs['subject'], inputs['protocol'])
