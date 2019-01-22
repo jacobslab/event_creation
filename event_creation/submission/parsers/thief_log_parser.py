@@ -1,8 +1,8 @@
-from base_log_parser import BaseSessionLogParser#, UnknownExperimentError
-from recarray import strip_accents, to_json, to_dict
+from .base_log_parser import BaseSessionLogParser#, UnknownExperimentError
+from ..viewers.recarray import strip_accents, to_json, to_dict
 import numpy as np
 import os
-import fileutil
+from .. import fileutil
 import argparse
 
 class ThiefSessionLogParser(BaseSessionLogParser):
