@@ -9,6 +9,7 @@ directories:
   montage_db_dir : &MONTAGE_DB !join [*LOC_DB, 'montages/{montage_num}']
 
   current_ephys_dir   : &CURR_EPHYS !join [*SESS_DB, 'ephys/current_processed']
+  current_ephys_micros_dir   : &CURR_EPHYS_MICROS !join [*SESS_DB, 'ephys_micros/current_processed']
   current_montage_dir : &CURR_MONT !join [*MONTAGE_DB, 'neuroradiology/current_processed']
 
   matlab_event_dir : &MLAB_EV_DIR '{events_root}/{ram_experiment}'
@@ -61,10 +62,19 @@ files:
     origin_file: sources.json
     destination: eeg_sources.json
 
+  - name: micro_sources
+    <<: *LINK
+    groups: [ r1 ]
+    required: false # As groups are determined before ephys submission, event creation will fail if this is required
+    origin_directory: *CURR_EPHYS_MICROS
+    origin_file: sources.json
+    destination: eeg_sources.json
+
   - name: contacts
     << : *LINK
     groups: [ r1 , '!system_3']
     origin_directory: *CURR_MONT
+    required: false
     origin_file: contacts.json
     destination: contacts.json
 

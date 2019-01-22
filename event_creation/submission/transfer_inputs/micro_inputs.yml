@@ -6,12 +6,13 @@ directories:
   localization_db_dir : &LOC_DB !join [*SUBJ_DB, 'localizations/{localization}']
   montage_db_dir : &MONTAGE_DB !join [*LOC_DB, 'montages/{montage_num}']
 
-  current_ephys_dir   : &CURR_EPHYS !join [*SESS_DB, "ephys/current_processed"]
+  current_ephys_dir   : &CURR_EPHYS !join [*SESS_DB, "ephys_micro/current_processed"]
   current_montage_dir : &CURR_MONT !join [*MONTAGE_DB, "neuroradiology/current_processed"]
 
   matlab_event_dir : &MLAB_EV_DIR '{events_root}/{ram_experiment}'
 
   subject_import_dir : &SUBJ_DIR "{data_root}/{code}"
+  subject_docs_dir : &SUBJ_DOCS_DIR "{data_root}/{code}/docs"
   behavioral_dir     : &BEH_DIR !join [*SUBJ_DIR, "behavioral"]
   beh_experiment_dir : &BEH_EXP_DIR !join [*BEH_DIR, '{experiment}']
   beh_session_dir    : &BEH_SESS_DIR !join [*BEH_EXP_DIR, 'session_{original_session}']
@@ -66,12 +67,8 @@ files:
     checksum_contents: false
     origin_directory: *RAW_DIR
     origin_file:
-      - '*.edf'
-      - '*.EDF'
-      - '*.eeg'
-      - '*.EEG'
-      - '*.ns2'
-      - '*/*.ns2'
+      - '*.ns6'
+      - '*/*.ns6'
     destination: raw_eeg/
 
   - name: host_pc_files
@@ -94,53 +91,30 @@ files:
         origin_file: 'experiment_config.json'
         destination: experiment_config.json
 
-  - name: elec_file
-    <<: *FILE
-    groups: [ r1, transfer ]
-    multiple: true
-    required: false
-    origin_directory: *RAW_DIR
-    origin_file: '*.21[eE]'
-    destination: 'raw_eeg/'
+#  - name: jacksheet
+#    <<: *FILE
+#    origin_directory: *SUBJ_DOCS_DIR
+#    origin_file: 'jacksheet.txt'
+#    destination: 'jacksheet.txt'
 
-  - name: contacts
+  - name: jacksheet_micros
     <<: *LINK
     groups: [ r1, transfer, '!system_3' ]
-    origin_directory: *CURR_MONT
-    origin_file: contacts.json
-    destination: contacts.json
+    origin_directory: *RAW_DIR
+    origin_file: jacksheet_micros.txt
+    destination: jacksheet_micros.txt
 
-  - name: contacts
-    <<: *LINK
-    groups: [ r1, transfer, '!system_1', '!system_2' ]
-    required: false
-    origin_directory: *CURR_MONT
-    origin_file: contacts.json
-    destination: contacts.json
-
-  - name: channel_map
-    <<: *FILE
-    required: false
-    groups: [ r1, transfer ]
-    origin_directory: !join [*SUBJ_DIR, 'docs']
-    origin_file: channel_map.json
-    destination: channel_map.json
-
-  - name: raw_eeg
-    <<: *LINK
-    groups: [ ltp ]
-    multiple: true
-    origin_directory: *LTP_EEG_DIR
-    origin_file:
-      - '*.raw.bz2'
-      - '*.bdf.bz2'
-    destination: raw_eeg/
-
-  - name: artifact_log
-    <<: *FILE
-    groups: [ ltp ]
-    multiple: true
-    required: false
-    origin_directory: *LTP_EEG_DIR
-    origin_file: '*.log'
-    destination: 'logs/'
+#  - name: contacts
+#    <<: *LINK
+#    groups: [ r1, transfer, '!system_3' ]
+#    origin_directory: *CURR_MONT
+#    origin_file: contacts.json
+#    destination: contacts.json
+#
+#  - name: contacts
+#    <<: *LINK
+#    groups: [ r1, transfer, '!system_1', '!system_2' ]
+#    required: false
+#    origin_directory: *CURR_MONT
+#    origin_file: contacts.json
+#    destination: contacts.json

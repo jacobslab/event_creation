@@ -831,6 +831,8 @@ class NsxFile:
         if data_time_s != DATA_TIME_DEF and stop_idx < stop_idx_output:  stop_idx_output = stop_idx
         total_samps = int(ceil((stop_idx_output - start_idx) / downsample))
 
+        print(self.basic_header['ChannelCount'])
+        # if (total_samps * num_elecs * DATA_BYTE_SIZE) > DATA_PAGING_SIZE:
         if (total_samps * self.basic_header['ChannelCount'] * DATA_BYTE_SIZE) > DATA_PAGING_SIZE:
             print("\nOutput data requested is larger than 1 GB, attempting to preallocate output['data'] now")
 
@@ -900,7 +902,7 @@ class NsxFile:
                                   "initial section padded with zeros".format(
                                    output['data_headers'][-1]['Timestamp'] / self.basic_header['TimeStampResolution']))
                             start_offset = START_OFFSET_MIN
-                            d_ptr        = timestamp_sample // downsample
+                            d_ptr        = int(timestamp_sample // downsample)
                     hit_start = True
 
             # for all other packets
@@ -913,7 +915,7 @@ class NsxFile:
                 elif timestamp_sample > d_ptr:
                     print("\nSection padded with zeros due to file pausing")
                     start_offset = START_OFFSET_MIN
-                    d_ptr        = timestamp_sample // downsample
+                    d_ptr        = int(timestamp_sample // downsample)
 
             # Set number of samples to be read based on if start/stop sample is during data packet
             if STOP_OFFSET_MIN < stop_idx <= (timestamp_sample + output['data_headers'][-1]['NumDataPoints']):

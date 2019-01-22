@@ -19,6 +19,7 @@ def build_group_index(input, groups):
 
     for file in input:
 
+
         do_process = True
         for group in file['groups']:
             if group.startswith('!'):
@@ -32,6 +33,8 @@ def build_group_index(input, groups):
 
         if not do_process:
             continue
+
+
 
         transfer_file = TransferFile(**file)
         transfer_file.expand_files(groups)

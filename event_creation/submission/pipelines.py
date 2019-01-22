@@ -8,7 +8,7 @@ from . import fileutil
 from .configuration import paths
 from .events_tasks import SplitEEGTask, MatlabEEGConversionTask, MatlabEventConversionTask, \
                   EventCreationTask, CompareEventsTask, EventCombinationTask, \
-                  MontageLinkerTask, RecognitionFlagTask
+                  MontageLinkerTask, RecognitionFlagTask, SplitMicroTask
 from .neurorad_tasks import (LoadVoxelCoordinatesTask, CorrectCoordinatesTask, CalculateTransformsTask,
                            AddContactLabelsTask, AddMNICoordinatesTask, WriteFinalLocalizationTask,
                              AddManualLocalizationsTask,CreateMontageTask,CreateDuralSurfaceTask,GetFsAverageCoordsTask,
@@ -21,7 +21,8 @@ from .parsers.mat_converter import MathMatConverter
 from .transfer_config import TransferConfig
 from .tasks import ImportJsonMontageTask, CleanLeafTask
 from .transferer import generate_ephys_transferer, generate_session_transferer, generate_localization_transferer,\
-                       generate_import_montage_transferer, generate_create_montage_transferer, TRANSFER_INPUTS, find_sync_file
+                       generate_import_montage_transferer, generate_create_montage_transferer, TRANSFER_INPUTS, \
+                       generate_micro_transferer, find_sync_file
 from .exc import TransferError
 from .log import logger
 
@@ -57,91 +58,7 @@ def determine_groups(protocol, subject, full_experiment, session, transfer_cfg_f
 
     groups += tuple(args)
 
-    if protocol == 'r1' and 'system_1' not in groups and 'system_2' not in groups and 'system_3' not in groups:
-        kwargs['original_session'] = session
-        inputs = dict(protocol=protocol,
-                      subject=subject,
-                      code=subject,
-                      session=session,
-                      experiment=full_experiment,
-                      **kwargs)
-        inputs.update(**paths.options)
-
-        systems = ('system_1', 'system_2', 'system_3_3', 'system_3_1', 'system_3_0')
-        misses = {}
-        for sys in systems:
-            try:
-                logger.info("Checking if this system is {}".format(sys))
-                transfer_cfg = TransferConfig(transfer_cfg_file, groups + (sys,), **inputs)
-                transfer_cfg.locate_origin_files()
-
-                missing_files = transfer_cfg.missing_required_files()
-
-                if len(missing_files) > 0:
-                    names = [missing_file.name for missing_file in missing_files]
-                    logger.info("Determined due to missing files ({}) that this system is not {}".format(names, sys))
-                    misses[sys] = str(names)
-                    continue
-
-                match = r1_system_match(full_experiment, transfer_cfg, sys)
-
-                if match:
-                    logger.info("Making a very educated guess that this system is {}".format(sys))
-                    break
-                else:
-                    logger.info("Determined from log files that this system is not {}".format(sys))
-                    misses[sys] = ''
-            except Exception as e:
-                logger.debug("This system is probably not {} due to error: {}".format(sys, e))
-                misses[sys] = str(e)
-                continue
-        else:
-            raise TransferError("System_# determination failed. I'm a failure. Nobody loves me.\n"
-                                "Missing files: \n {}".format(misses))
-
-        groups += (sys,)
-
     return groups
-
-def r1_system_match(experiment, transfer_cfg, sys):
-    """
-    Determines whether the provided system_# matches the provided TransferConfig given the presence of system log files
-    It is liberal with matching -- if it could possibly be that system, it returns True
-    :param experiment:
-    :param transfer_cfg:
-    :param sys:
-    :return:
-    """
-    session_log = transfer_cfg.get_file('session_log')
-    eeg_log = transfer_cfg.get_file('eeg_log')
-    if experiment.startswith('TH'):
-        if eeg_log is not None:
-            with open(eeg_log.origin_paths[0]) as eeg_file:
-                if len(eeg_file.read().strip()) > 0:
-                    logger.debug("This appears to be system_1 because the eeg_log is not empty")
-                    return sys == 'system_1'
-                else:
-                    logger.debug("This appears to not be system_1 because the eeg_log is empty")
-                    return sys != 'system_1'
-        else:
-            return sys != 'system_1'
-
-    if session_log is not None:
-        if len(session_log.origin_paths) > 0:
-            try:
-                version = get_version_num(session_log.origin_paths[0])
-                logger.debug("The version number in session_log is {}".format(version))
-                if version >= 3:
-                    logger.debug("This appears to be system_3 due to version number")
-                    return sys == 'system_3_0'
-                elif version >= 2:
-                    logger.debug("This appears to be system_2 due to version number")
-                    return sys == 'system_2'
-            except Exception as e:
-                logger.debug("Error trying to get version number: {}".format(e))
-                return sys == 'system_3_1'
-
-    return True
 
 
 class TransferPipeline(object):
@@ -288,6 +205,23 @@ class TransferPipeline(object):
             self.on_failure()
             raise
 
+def build_micro_pipeline(subject, montage, experiment, session, protocol='r1', groups=tuple(), code=None,
+                         original_session=None, new_experiment=None, **kwargs):
+    logger.set_label("Building Micro Splitter/Downsampler")
+    new_experiment = new_experiment if not new_experiment is None else experiment
+
+    groups = determine_groups(protocol, code, experiment, original_session,
+                              TRANSFER_INPUTS['micro'], 'transfer', *groups, **kwargs)
+    # groups += ('system_2', 'TH', 'transfer')
+
+    transferer = generate_micro_transferer(subject, experiment, session, protocol, groups + ('transfer',),
+                                           code=code,
+                                           original_session=original_session,
+                                           new_experiment=new_experiment,
+                                           **kwargs)
+    transferer.set_transfer_type(SOURCE_IMPORT_TYPE)
+    task = SplitMicroTask(subject, montage, new_experiment, session, protocol, **kwargs)
+    return TransferPipeline(transferer, task)
 
 def build_split_pipeline(subject, montage, experiment, session, protocol='r1', groups=tuple(), code=None,
                          original_session=None, new_experiment=None, **kwargs):
@@ -338,6 +272,7 @@ def build_events_pipeline(subject, montage, experiment, session, do_math=True, p
     except Exception:
         logger.debug("Couldn't find sync pulses, which is fine unless this is system_1")
 
+    # groups += ('system_2', 'TH', 'transfer')
     groups = determine_groups(protocol, code, experiment, original_session,
                                TRANSFER_INPUTS['behavioral'], 'transfer', *groups, **kwargs)
     try:
@@ -354,7 +289,7 @@ def build_events_pipeline(subject, montage, experiment, session, do_math=True, p
     if protocol == 'r1':
         system = [x for x in groups if 'system' in x][0]
         system = system.partition('_')[-1]
-        tasks = [MontageLinkerTask(protocol, subject, montage, critical=('3' in system))]
+        # tasks = [MontageLinkerTask(protocol, subject, montage, critical=('3' in system))]
         if kwargs.get('new_experiment'):
             new_exp = kwargs['new_experiment']
             if 'PS4_' in new_exp:
@@ -364,7 +299,8 @@ def build_events_pipeline(subject, montage, experiment, session, do_math=True, p
                 task_kwargs = kwargs
         else:
             task_kwargs = kwargs
-        tasks.append(EventCreationTask(protocol, subject, montage, experiment, session, system, critical=('PS4' not in groups), **task_kwargs))
+        # tasks.append(EventCreationTask(protocol, subject, montage, experiment, session, system, critical=('PS4' not in groups), **task_kwargs))
+        tasks = [EventCreationTask(protocol, subject, montage, experiment, session, system, critical=('PS4' not in groups), **task_kwargs)]
     elif protocol == 'ltp':
         if experiment == 'ltpFR':
             tasks = [EventCreationTask(protocol, subject, montage, experiment, session, False, parser_type=LTPFRSessionLogParser)]

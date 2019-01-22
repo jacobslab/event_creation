@@ -303,7 +303,10 @@ def run_session_import(kwargs, do_import=True, do_convert=False, force_events=Fa
     successes = [True]
 
     if do_import:
-        ephys_builder = Importer(Importer.BUILD_EPHYS,**kwargs)
+        if kwargs['align_micros']:
+            ephys_builder = Importer(Importer.BUILD_MICROS, **kwargs)
+        else:
+            ephys_builder = Importer(Importer.BUILD_EPHYS,**kwargs)
         success,attempts = attempt_importers([ephys_builder],force_eeg)
         attempted_importers.extend(attempts)
         successes.append(success)
@@ -715,6 +718,7 @@ def prompt_for_session_inputs(inputs, **opts):
         groups=groups,
         attempt_import=attempt_import,
         attempt_conversion=attempt_conversion,
+        align_micros=False,
         PS4 = ('ps4' in groups)
     )
 

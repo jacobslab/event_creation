@@ -9,7 +9,7 @@ from ptsa.data.readers import JsonIndexReader
 from .transferer import TransferError
 from .pipelines import build_events_pipeline, build_split_pipeline, build_convert_events_pipeline, \
                        build_convert_eeg_pipeline, build_import_montage_pipeline, build_import_localization_pipeline,\
-                       build_create_montage_pipeline
+                       build_create_montage_pipeline, build_micro_pipeline
 from .log import logger
 from .configuration import paths
 
@@ -97,6 +97,7 @@ class Importer(object):
     CONVERT_EPHYS = 5
     LOCALIZATION = 6
     MOVE_WAV = 7
+    BUILD_MICROS = 8
 
     PIPELINE_BUILDERS = {
         CREATE_MONTAGE: build_create_montage_pipeline,
@@ -106,6 +107,7 @@ class Importer(object):
         BUILD_EPHYS: build_split_pipeline,
         CONVERT_EVENTS: build_convert_events_pipeline,
         CONVERT_EPHYS: build_convert_eeg_pipeline,
+        BUILD_MICROS: build_micro_pipeline
     }
     LABELS = {
         CREATE_MONTAGE: 'Montage Importer',
@@ -115,7 +117,8 @@ class Importer(object):
         BUILD_EPHYS: 'Ephys Builder',
         CONVERT_EVENTS: 'Events Converter',
         CONVERT_EPHYS: 'Ephys Converter',
-        MOVE_WAV: '.wav Importer'
+        MOVE_WAV: '.wav Importer',
+        BUILD_MICROS: 'Micro Builder',
     }
 
     def __init__(self, type, *args, **kwargs):

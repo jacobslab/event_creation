@@ -14,7 +14,7 @@ from ..log import logger
 from ..parsers.system2_log_parser import System2LogParser
 
 
-def System2Aligner(events, files, plot_save_dir=None):
+def System2Aligner(events, files, plot_save_dir=None, align_micros=False):
     """
     Wrapper function which returns an instance of the Task Aligner, which aligns task to NP, or the Host Aligner,
     which aligns just Host to NP
@@ -24,7 +24,7 @@ def System2Aligner(events, files, plot_save_dir=None):
     :return: instance of aligner object
     """
     if 'session_log' in files:
-        return System2TaskAligner(events, files, plot_save_dir)
+        return System2TaskAligner(events, files, plot_save_dir, align_micros)
     else:
         return System2HostAligner(events, files, plot_save_dir)
 
@@ -38,10 +38,12 @@ class System2TaskAligner(object):
     TASK_TIME_FIELD = 'mstime'   # Field which describes time on task PC
     NP_TIME_FIELD = 'eegoffset'  # Field which describes sample on EG system
     EEG_FILE_FIELD = 'eegfile'   # Field containing name of eeg file in events structure
+    NP_TIME_FIELD_MICROS = 'lfpoffset'
+    LFP_FILE_FIELD = 'lfpfile'
 
     PLOT_SAVE_FILE_EXT = '.png'
 
-    def __init__(self, events, files, plot_save_dir=None):
+    def __init__(self, events, files, plot_save_dir=None, align_micros=False):
         """
         Constructor
         :param events: The events structure to be aligned
@@ -66,11 +68,12 @@ class System2TaskAligner(object):
             self.jacksheet = None
 
         self.plot_save_dir = plot_save_dir
+        self.align_micros = align_micros
         self.events = events
         self.merged_events = events
 
         # Store the name of the eeg files in the sources structure. Just makes things easier later
-        nsx_info = json.load(open(files['eeg_sources']))
+        nsx_info = json.load(open(files['eeg_sources' if not self.align_micros else 'micro_sources']))
         for name in nsx_info:
             nsx_info[name]['name'] = name
         # Get the nsx files in order of their start time
@@ -82,10 +85,16 @@ class System2TaskAligner(object):
                                                 self.plot_save_dir)
 
         # Get the coefficients that map host to neuroport
+        sample_rates = np.unique([x['sample_rate'] for x in self.all_nsx_info])
+        if len(sample_rates) > 1:
+            raise AlignmentError('Multiple sampling rates in micro alignment found')
+        else:
+            sample_rate = sample_rates[0]
+
         self.host_to_np_coefs, self.host_time_np_starts, self.host_time_np_ends = \
             self.get_coefficients_from_host_log(self.get_host_np_coefficient,
                                                 self.all_nsx_info[0]['source_file'],
-                                                self.plot_save_dir)
+                                                self.plot_save_dir, sample_rate)
 
         # Get the length of each of the neuroport recordings as seen by the log on the host PC
         self.np_log_lengths = np.array(self.host_time_np_ends) - np.array(self.host_time_np_starts)
@@ -134,7 +143,8 @@ class System2TaskAligner(object):
 
         # Times that occur before the start of the recording are marked as -1
         np_times[np_times < 0] = -1
-        aligned_events[self.NP_TIME_FIELD] = np_times
+        field = self.NP_TIME_FIELD if not self.align_micros else self.NP_TIME_FIELD_MICROS
+        aligned_events[field] = np_times
 
         # Add the eegfile field to the events
         self.apply_eeg_file(aligned_events, host_times)
@@ -149,14 +159,15 @@ class System2TaskAligner(object):
         """
         # Get the nsx files which were used in the session
         nsx_infos = self.get_used_nsx_files()
-        full_mask = np.zeros(events[self.EEG_FILE_FIELD].shape)
+        field = self.EEG_FILE_FIELD if not self.align_micros else self.LFP_FILE_FIELD
+        full_mask = np.zeros(events[field].shape)
         # Find the events which occurred between the start and end of the recording
         for info, host_start in \
                 zip(nsx_infos, self.host_time_np_starts):
             mask = np.logical_and(host_times > host_start,
                                   host_times < (host_start + info['n_samples'] * float(info['sample_rate']) / 1000))
             full_mask = np.logical_or(full_mask, mask)
-            events[self.EEG_FILE_FIELD][mask] = info['name']
+            events[field][mask] = info['name']
 
     def get_used_nsx_files(self):
         """
@@ -302,7 +313,7 @@ class System2TaskAligner(object):
         return coefficients[0] * np.array(source) + coefficients[1]
 
     @classmethod
-    def get_host_np_coefficient(cls, host_log_file, nsx_file, plot_save_dir=None):
+    def get_host_np_coefficient(cls, host_log_file, nsx_file, plot_save_dir=None, sample_rate=None):
         """
         For a given host log file and path to an nsx file (used to get sample rate), returns a list of the
         coefficients, start, and end times for each marked recording reset
@@ -320,7 +331,7 @@ class System2TaskAligner(object):
             logger.debug('Only one NEUROPORT-TIME in {}. Skipping.'.format(host_log_file), 'WARNING')
 
         # "samples" from host log are actually tics of internal np counter. Convert those to actual samples
-        np_times = cls.tics_to_samples(np_tics, nsx_file)
+        np_times = cls.tics_to_samples(np_tics, nsx_file, sample_rate)
 
         # Split the times into lists for each recording reset
         [split_host, split_np] = cls.split_np_times(host_times, np_times)
@@ -363,7 +374,7 @@ class System2TaskAligner(object):
         return split_host, split_np
 
     @classmethod
-    def tics_to_samples(cls, np_tics, nsx_file):
+    def tics_to_samples(cls, np_tics, nsx_file, sample_rate=None):
         """
         Converts neuroport 30KHz 'tic's to samples based on the sample rate corresponding to the file extension
         :param np_tics: Tics of internal NP counter
@@ -375,7 +386,8 @@ class System2TaskAligner(object):
             sample_rate = 1000
         else:
             ext = os.path.splitext(nsx_file)[1]
-            sample_rate = float(NSx_reader.SAMPLE_RATES[ext])
+            if sample_rate is None:
+                sample_rate = float(NSx_reader.SAMPLE_RATES[ext])
         return np.array(np_tics) / (float(NSx_reader.TIC_RATE) / sample_rate)
 
     def get_task_host_coefficient(self, host_log_file, plot_save_dir=None):

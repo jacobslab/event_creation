@@ -230,6 +230,26 @@ def generate_wav_transferer(subject,experiment,session,protocol='r1',groups=('r1
                       original_session=original_session,new_experiment = new_experiment,
                       data_root=paths.data_root,db_root=paths.db_root,events_root=paths.events_root,**kwargs)
 
+def generate_micro_transferer(subject, experiment, session, protocol='r1', groups=tuple(),
+                              code=None, original_session=None, new_experiment=None, **kwargs):
+    cfg_file = TRANSFER_INPUTS['micro']
+    if new_experiment is None:
+        new_experiment = experiment
+    destination = os.path.join(paths.db_root,
+                               'protocols', protocol,
+                               'subjects', subject,
+                               'experiments', new_experiment,
+                               'sessions', str(session),
+                               'ephys_micros')
+    code = code or subject
+    original_session = original_session if not original_session is None else session
+
+    return Transferer(cfg_file, (experiment,) + groups, destination,
+                      protocol=protocol,
+                      subject=subject, experiment=experiment, new_experiment=new_experiment, session=original_session,
+                      data_root=paths.data_root, db_root=paths.db_root, events_root=paths.events_root,
+                      code=code, original_session=original_session, **kwargs)
+
 def generate_ephys_transferer(subject, experiment, session, protocol='r1', groups=tuple(),
                               code=None, original_session=None, new_experiment=None, **kwargs):
     cfg_file = TRANSFER_INPUTS['ephys']

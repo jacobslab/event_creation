@@ -10,6 +10,8 @@ import numpy as np
 import json
 from shutil import copy
 from scipy.linalg import pinv
+from scipy.signal import filtfilt, butter
+from scipy.io import savemat
 
 import tables
 import mne
@@ -647,6 +649,7 @@ class NSx_reader(EEG_reader):
     SAMPLE_RATES = {
         '.ns2': 1000,
         '.ns5': 30000,
+        '.ns6': 30000,
     }
 
 
@@ -699,6 +702,32 @@ class NSx_reader(EEG_reader):
         return self.data['data'][channels==channel, :]
 
     @classmethod
+    def _my_downsample(cls, signal, sr, desired_downsample_rate):
+        """
+        Downsample using a decimate style. scipy.resample is super slow for large arrays.
+        """
+
+        # figure out our decimate factor. Must be int, so we'll try to get as close
+        # as possible to the desired rate. May not be exactly.
+        ts_diff_sec = 1. / sr
+        dec_factor = np.floor(1. / (desired_downsample_rate * ts_diff_sec))
+
+        # new sampling rate
+        ts_diff_down = dec_factor * ts_diff_sec
+        new_sr = 1. / ts_diff_down
+
+        # apply a low pass filter before decimating
+        low_pass_freq = new_sr / 2.
+        [b, a] = butter(4, low_pass_freq / (sr / 2), 'lowpass')
+        signals_low_pass = filtfilt(b, a, signal, axis=0)
+
+        # now decimate
+        inds = np.arange(0, len(signals_low_pass), dec_factor, dtype=int)
+        new_sigals = signals_low_pass[inds]
+        #     new_ts = timestamps[inds]
+        return new_sigals, new_sr
+
+    @classmethod
     def get_nsx_info(cls, nsx_file):
         reader = NsxFile(nsx_file)
         _, extension = os.path.splitext(nsx_file)
@@ -745,8 +774,24 @@ class NSx_reader(EEG_reader):
                 raise EEGError("EEG File {} contains no data "
                                                    "for channel {}".format(self.raw_filename, recording_channel))
             data = np.concatenate((np.ones((1, buffer_size), self.DATA_FORMAT) * data[0,0], data), 1)
-            data.tofile(filename)
+
+            # JFM: for now, save out the raw non-downsampled data as mat files for easier reading into combinato for
+            # cluster cutting
+            if self.nsx_info['sample_rate'] == 30000:
+                logger.info('Saving raw to .mat file: %s: %s' % (label, channel))
+                savemat(filename+'.mat', {'data': data, 'sr': 30000})
+
+            # now downsample the data and save out
+            ds_data, ds_sr = self._my_downsample(data[0], 30000, 2000)
+            logger.info('Downsampling %s: %s to 2000 Hz' % (label, channel))
+            ds_data.tofile(filename)
             sys.stdout.flush()
+
+        # update .nsx_info to account for new sample rate
+        self.nsx_info['sample_rate'] = int(ds_sr)
+
+        # JFM: I'm not sure why n_samples above is "used_data_points" and not just the length of the actual data?
+        self.nsx_info['n_samples'] = len(ds_data)
 
 
 class EDF_reader(EEG_reader):
@@ -1559,6 +1604,7 @@ READERS = {
     '.edf': EDF_reader,
     '.eeg': NK_reader,
     '.ns2': NSx_reader,
+    '.ns6': NSx_reader,
     '.raw': EGI_reader,
     '.bdf': BDF_reader,
     '.h5': HD5_reader

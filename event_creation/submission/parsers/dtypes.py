@@ -19,6 +19,8 @@ base_fields = (
     ('msoffset', -1, 'int16'),
     ('eegoffset', -1, 'int64'),
     ('eegfile', '', 'S256'),
+    ('lfpoffset', -1, 'int64'),
+    ('lfpfile', '', 'S256'),
     ('phase','','S16')
 )
 

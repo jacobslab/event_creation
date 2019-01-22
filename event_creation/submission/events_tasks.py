@@ -45,6 +45,71 @@ from .log import logger
 from .exc import NoEventsError, ProcessingError,WebAPIError
 import json
 
+
+class SplitMicroTask(PipelineTask):
+
+    SPLIT_FILENAME = '{subject}_{experiment}_{session}_{time}'
+
+    def __init__(self, subject, montage, experiment, session, protocol, critical=True, **kwargs):
+        super(SplitMicroTask, self).__init__(critical)
+        self.name = 'Splitting {exp}_{sess}'.format(exp=experiment, sess=session)
+        self.subject = subject
+        self.experiment = experiment
+        self.session = session
+        self.protocol = protocol
+        self.kwargs = kwargs
+
+    @staticmethod
+    def group_ns_files(raw_eegs):
+        raw_eeg_groups = []
+        for raw_eeg in raw_eegs:
+            for group in raw_eeg_groups:
+                if raw_eeg.replace('np1', 'np2') == group[0].replace('np1', 'np2'):
+                    group.append(raw_eeg)
+                    break
+            else:
+                raw_eeg_groups.append([raw_eeg])
+        raw_eeg_groups = [group[0] if len(group) == 1 else group for group in raw_eeg_groups]
+        return raw_eeg_groups
+
+
+    def _run(self, files, db_folder):
+        logger.set_label(self.name)
+        raw_eegs = files['raw_eeg']
+        if not isinstance(raw_eegs, list):
+            raw_eegs = [raw_eegs]
+
+        raw_eeg_groups = self.group_ns_files(raw_eegs)
+
+        if 'jacksheet_micros' in files:
+            jacksheet_files = [files['jacksheet_micros']] * len(raw_eeg_groups)
+        else:
+            raise KeyError("Cannot find jacksheet mapping! No 'jacksheet_micros' is subject docs dir!")
+
+        channel_map = files.get('channel_map')
+
+        for raw_eeg, jacksheet_file in zip(raw_eeg_groups, jacksheet_files):
+            try:
+                reader = get_eeg_reader(raw_eeg, jacksheet_file, channel_map_filename=channel_map)
+            except KeyError as k:
+                traceback.print_exc()
+                logger.warn('Cannot split file with extension {}'.format(k))
+                continue
+
+            split_eeg_filename = self.SPLIT_FILENAME.format(subject=self.subject,
+                                                            experiment=self.experiment,
+                                                            session=self.session,
+                                                            time=reader.get_start_time_string())
+            reader.split_data(db_folder, split_eeg_filename)
+            num_split_files = (len(glob.glob(os.path.join(db_folder, 'noreref', '*.[0-9]*')))
+                                + len(glob.glob(os.path.join(db_folder,'noreref','*.h5'))))
+
+        if num_split_files == 0:
+            raise ProcessingError(
+                'Seems like splitting did not properly occur. No split files found in {}. Check jacksheet'.format(
+                    db_folder))
+
+
 class SplitEEGTask(PipelineTask):
 
     SPLIT_FILENAME = '{subject}_{experiment}_{session}_{time}'
@@ -159,6 +224,7 @@ class EventCreationTask(PipelineTask):
             'catFR': CatFRSessionLogParser,
             'PS': PSLogParser,  # which has its own dispatching system ...
             'TH': THSessionLogParser,
+            # 'THIEF'
             'THR': THRSessionLogParser,
         }
         elif sys_num<3.3:
@@ -230,7 +296,7 @@ class EventCreationTask(PipelineTask):
 
 
     def __init__(self, protocol, subject, montage, experiment, session, r1_sys_num='', event_label='task',
-                 parser_type=None, critical=True, **kwargs):
+                 parser_type=None, critical=True, align_micros=False, **kwargs):
         super(EventCreationTask, self).__init__(critical)
         experiment = kwargs.get('new_experiment') or experiment
         self.name = '{label} Event Creation for {exp}_{sess}'.format(label=event_label, exp= experiment, sess=session)
@@ -240,6 +306,7 @@ class EventCreationTask(PipelineTask):
         self.experiment = experiment
         self.session = session
         self._r1_sys_num = r1_sys_num
+        self.align_micros = align_micros
         self.kwargs = kwargs
         self.event_label = event_label
         self.filename = '{label}_events.json'.format(label=event_label)
@@ -250,6 +317,7 @@ class EventCreationTask(PipelineTask):
         self.pipeline = pipeline
 
     def _run(self, files, db_folder):
+        print('MODIFY THIS FOR NEW TASK')
         logger.set_label(self.name)
         logger.debug('self._parser_type is %s'%(None if not self._parser_type else str(self._parser_type)))
         if self.r1_sys_num>=3:
@@ -275,7 +343,7 @@ class EventCreationTask(PipelineTask):
                     events = aligner.align()
                 else:
                     if self.r1_sys_num == 2.0:
-                        aligner = System2Aligner(unaligned_events, files, db_folder)
+                        aligner = System2Aligner(unaligned_events, files, db_folder, self.align_micros)
                     elif 3.0 <= self.r1_sys_num <= 3.4:
                         aligner = System3Aligner(unaligned_events, files, db_folder)
                     else:
