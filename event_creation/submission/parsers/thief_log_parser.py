@@ -36,9 +36,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 		# create parsed log file treasure.par from original log file before BaseSessionLogParser
 		# is initialized
-		print("THE FILES ARE  " + str(files))
 		files['thief_par'] = os.path.join(os.path.dirname(files['session_log']), 'thief.par')
-		print(files['thief_par'])
 		
 		self.parse_raw_log(files['session_log'],files['thief_par'])
 		super(ThiefSessionLogParser, self).__init__(protocol, subject, montage, experiment, session, files,
@@ -62,15 +60,12 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 		# self._version = ''
 		# kind of hacky, 'type' is the second entry in the header
-		print("adding fields")
 		self._add_fields(*self._thief_fields())
-		print("adding type to new event")
 		self._add_type_to_new_event(
 			condition=self.event_header,
             reward_reval=self.event_line,
             transition_reval=self.event_line
 		)
-		print("adding type to modify event")
 		self._add_type_to_modify_events(
 			condition=self.modify_header
 		)
@@ -86,7 +81,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Overiding BaseSessionLogParser._empty_event because we don't have msoffset field
 		"""
-		# print("empty event")
 		event = self.event_from_template(self._fields)
 		event.protocol = self._protocol
 		event.subject = self._subject
@@ -99,7 +93,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Override base class's default event to TH specific events.
 		"""
-		# print("default event")
 		event = self._empty_event
 		event.mstime = int(split_line[self._MSTIME_INDEX])
 		event.condition=self._condition
@@ -121,7 +114,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""I don't really want an event for this line, I'm just doing it to get the header. Getting the header because
 		some old log files don't have the stimList column, and we need to know if that exists. Could do it based on the
 		column number, but I feel like this is safer in case the log file changes."""
-		# print("event line " + str(split_line))
 		self._log_header = split_line
 		split_line[0] = -999
 		# split_line[1] = 'dummy'
@@ -134,7 +126,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 	def set_event_properties(self, split_line):
 
-		# print("log head " + str(self._log_header))
 		ind = self._log_header.index('condition')
 		self.condition = split_line[ind]
 
@@ -172,7 +163,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 	def event_line(self, split_line):
 
 		# set all the values in the line
-		# print("inside event line")
 		self.set_event_properties(split_line)
 
 		event = self.event_default(split_line)
@@ -181,7 +171,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 	def modify_rec(self, events):
 		"""This adds list length field to current rec event and all prior CHEST events of the current trial.
 		No current way to know this ahead of time."""
-		# print("events  " + str(events))
 		pres_events = (events['condition'] == self._condition)
 		pres_events_inc_empty = (events['condition'] == self._condition)
 		listLength = np.sum(pres_events)
@@ -196,10 +185,8 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		def writeToFile(f,data,subject):
 			columnOrder = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
 			strToWrite = ''
-			# print(data)
 			for col in columnOrder:
 				line = data[col]
-				# print(line)
 				if col != columnOrder[-1]:
 					strToWrite += '%s\t'%(line)
 				else:
@@ -220,7 +207,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 		# open raw log file to read and treasure.par to write new abridged log
 
-		print("raw log file " + str(raw_log_file))
 		sess_dir, log_file = os.path.split(raw_log_file)
 		in_file = open(raw_log_file, 'r')
 		out_file = open(out_file_path, 'w')
@@ -409,7 +395,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					solo_first_index=0
 					solo_second_index=0
 					solo_index=0
-#                     print("NEW ENVIRONMENT")
 					if tokens[3] == "Office":
 						env="office"
 						secondEnvName= "Office"
@@ -433,14 +418,12 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						leftReward=int(tokens[3])
 						mstime = tokens[0]
 						reward=leftReward
-						print("left reward " + str(mstime))
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,leftReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogLeft[envIndex,0]==0:
 							ogLeft[envIndex,0]=leftReward
 					else:
 						rightReward = int(tokens[3])
 						mstime = tokens[0]
-						print("right reward")
 						reward=rightReward
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,rightReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogRight[envIndex,0]==0:
@@ -452,7 +435,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				elif tokens[2]=="INSTRUCTION_VIDEO":
 					if tokens[3]=="STARTED":
 						temporal_event="instruction_video"
-						print("inside inst video " + str(mstime) )
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[3]=="ENDED":
 						temporal_event=None
@@ -485,13 +467,10 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						keyExists=False
 						for key in data:
 							if key==mstime:
-								print("key exists " + str(key))
 								keyExists=True
 						if not keyExists:
-							print("key create " + str(mstime))
 							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						else:	
-							print("key " + str(mstime))
 							data[mstime]['temporal_event']=temporal_event
 						# data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[3]=="OFF":
@@ -517,7 +496,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 				
 		# make sure all the events are in order, and write to new file
-		# print(data)
 		sortedKeys = sorted(data)
 		for key in sortedKeys:
 			writeToFile(out_file,data[key],subject)
@@ -539,9 +517,6 @@ def thief_test(protocol, subject, montage, experiment, session, base_dir='/data/
 			 # 'annotations': ''}
 	files = {'thief_par': os.path.join(exp_path,'thief.par'),
 			 'session_log': os.path.join(exp_path, subject+'Log.txt')}
-
-
-	print("THE FILES ARE  " + str(files))
 
 	parser = ThiefSessionLogParser(protocol, subject, montage, experiment, session, files)
 	return parser
