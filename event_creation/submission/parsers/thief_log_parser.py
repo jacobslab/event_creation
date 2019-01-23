@@ -14,16 +14,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		:return:
 		"""
 		return (
-			('env','','str'),
-			('phase','','str'),
-			('action','','str'),
+			('condition','None','S16'),
+			('env','nan','S16'),
+			('stage','nan','S16'),
+			('action','nan','S16'),
 			('reward', 0, 'int16'),
-			('whichroom','','str'),
-			('whichtraj','','str'),
+			('whichroom','nan','S16'),
+			('whichtraj','nan','S16'),
 			('posX',-1,'float'),
 			('posZ',-1,'float'),
-			('temporal_event','','str'),
-			('music','','str')
+			('temporal_event','nan','S16'),
+			('music','nan','S16')
 		)
 
 
@@ -35,39 +36,43 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 		# create parsed log file treasure.par from original log file before BaseSessionLogParser
 		# is initialized
+		print("THE FILES ARE  " + str(files))
 		files['thief_par'] = os.path.join(os.path.dirname(files['session_log']), 'thief.par')
+		print(files['thief_par'])
+		
 		self.parse_raw_log(files['session_log'],files['thief_par'])
 		super(ThiefSessionLogParser, self).__init__(protocol, subject, montage, experiment, session, files,
 												 primary_log='thief_par',
-												 include_stim_params=True, allow_unparsed_events=True)
+												 include_stim_params=False, allow_unparsed_events=True)
 
 		# remove msoffset field because it does not exist in the TH log
 		self._fields = tuple([x for x in self._fields if x[0] != 'msoffset'])
 		self._log_header = ''
-		self.condition=''
-		self.env=''
-		self.phase=''
-		self.action=''
+		self._condition=None
+		self._env=None
+		self._stage=None
+		self._action=None
 		self._reward = 0
-		self.whichroom=''
-		self.whichtraj=''
-		self.posX=-1
-		self.posZ=-1
-		self.temporal_event=''
-		self.music=''
-		self._recalled = False
+		self._whichroom=None
+		self._whichtraj=None
+		self._posX=-1
+		self._posZ=-1
+		self._temporal_event=None
+		self._music=None
 
 		# self._version = ''
 		# kind of hacky, 'type' is the second entry in the header
+		print("adding fields")
 		self._add_fields(*self._thief_fields())
+		print("adding type to new event")
 		self._add_type_to_new_event(
-			type=self.event_header,
-			CHEST=self.event_line,
-			REC=self.event_line
+			condition=self.event_header,
+            reward_reval=self.event_line,
+            transition_reval=self.event_line
 		)
+		print("adding type to modify event")
 		self._add_type_to_modify_events(
-			type=self.modify_header,
-			REC=self.modify_rec
+			condition=self.modify_header
 		)
 
 	# Any reason to not have all the fields persist in TH?
@@ -81,6 +86,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Overiding BaseSessionLogParser._empty_event because we don't have msoffset field
 		"""
+		# print("empty event")
 		event = self.event_from_template(self._fields)
 		event.protocol = self._protocol
 		event.subject = self._subject
@@ -93,11 +99,12 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Override base class's default event to TH specific events.
 		"""
+		# print("default event")
 		event = self._empty_event
 		event.mstime = int(split_line[self._MSTIME_INDEX])
 		event.condition=self._condition
 		event.env=self._env
-		event.phase=self._phase
+		event.stage=self._stage
 		event.action = self._action
 		event.reward = self._reward
 		event.whichroom=self._whichroom
@@ -114,27 +121,28 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""I don't really want an event for this line, I'm just doing it to get the header. Getting the header because
 		some old log files don't have the stimList column, and we need to know if that exists. Could do it based on the
 		column number, but I feel like this is safer in case the log file changes."""
+		# print("event line " + str(split_line))
 		self._log_header = split_line
 		split_line[0] = -999
-		split_line[1] = 'dummy'
+		# split_line[1] = 'dummy'
 		return self.event_default(split_line)
 
 	def modify_header(self, events):
 		"""Remove dummy event"""
-		events = events[events['type'] != 'dummy']
+		events = events[events['condition'] != 'dummy']
 		return events
 
 	def set_event_properties(self, split_line):
 
-
+		# print("log head " + str(self._log_header))
 		ind = self._log_header.index('condition')
 		self.condition = split_line[ind]
 
 		ind = self._log_header.index('env')
 		self._env = split_line[ind]
 
-		ind = self._log_header.index('phase')
-		self._phase = split_line[ind]
+		ind = self._log_header.index('stage')
+		self._stage = split_line[ind]
 
 		ind = self._log_header.index('action')
 		self._action = split_line[ind]
@@ -164,27 +172,8 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 	def event_line(self, split_line):
 
 		# set all the values in the line
+		# print("inside event line")
 		self.set_event_properties(split_line)
-
-		# calculate distance error and normalized distance error if this is not an empty chest
-		if self._item_name != '':
-			# calc distance error
-			xy_resp = np.array([self._chosenLocationX, self._chosenLocationY], dtype=float)
-			xy_act = np.array([self._locationX, self._locationY], dtype=float)
-			self._distErr = np.linalg.norm(xy_resp-xy_act)
-
-			# calc normalized distance error
-			rand_x = np.random.uniform(359.9, 409.9, 100000)
-			rand_y = np.random.uniform(318.0, 399.3, 100000)
-			possible_errors = np.sqrt((rand_x - xy_resp[0]) ** 2 + (rand_y - xy_resp[1]) ** 2)
-			self._normErr = np.mean(possible_errors < self._distErr)
-
-			# label recalled True if the distance error is less than the radius
-			self._recalled = self._distErr < ThiefSessionLogParser.TH_RADIUS_SIZE
-		else:
-			self._recalled = False
-			self._distErr = -999
-			self._normErr = -999
 
 		event = self.event_default(split_line)
 		return event
@@ -192,19 +181,20 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 	def modify_rec(self, events):
 		"""This adds list length field to current rec event and all prior CHEST events of the current trial.
 		No current way to know this ahead of time."""
-
-		pres_events = (events['trial'] == self._trial) & (events['type'] == 'CHEST') & (events['item_name'] != '')
-		pres_events_inc_empty = (events['trial'] == self._trial) & (events['type'] == 'CHEST')
+		# print("events  " + str(events))
+		pres_events = (events['condition'] == self._condition)
+		pres_events_inc_empty = (events['condition'] == self._condition)
 		listLength = np.sum(pres_events)
 		for ind in np.where(pres_events_inc_empty)[0]:
 			events[ind].listLength = listLength
 		events[-1].listLength = listLength
 		return events
 
+
 	@staticmethod
 	def parse_raw_log(raw_log_file, out_file_path):
 		def writeToFile(f,data,subject):
-			columnOrder = ['mstime','condition','env','phase','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
+			columnOrder = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
 			strToWrite = ''
 			# print(data)
 			for col in columnOrder:
@@ -216,10 +206,10 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					strToWrite += '%s\t%s\n'%(line,subject)
 			f.write(strToWrite)
 
-		def makeEmptyDict(mstime=None,condition=None,env=None,phase=None,action=None,reward=None,whichroom=None,whichtraj=None,posX=None,posZ=None,
+		def makeEmptyDict(mstime=None,condition=None,env=None,stage=None,action=None,reward=None,whichroom=None,whichtraj=None,posX=None,posZ=None,
 			temporal_event=None,music=None):
-			fields = ['mstime','condition','env','phase','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
-			vals = [mstime,condition,env,phase,action,reward,whichroom,whichtraj,posX,posZ,temporal_event,music]
+			fields = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
+			vals = [mstime,condition,env,stage,action,reward,whichroom,whichtraj,posX,posZ,temporal_event,music]
 			emptyDict = dict(zip(fields,vals))
 			return emptyDict
 
@@ -239,7 +229,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		playerPathsFile = open(os.path.join(sess_dir,"playerPaths.par"), 'w')
 
 		# write log header
-		columnOrder = ['mstime','condition','env','phase','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
+		columnOrder = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
 		subject = log_file[:-4]
 		out_file.write('\t'.join(columnOrder) + '\tsubject\n')
 
@@ -249,7 +239,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		chest = None
 		env=None
 		condition=None
-		phase=None
+		stage=None
 		action=None
 		posX=-1
 		posZ=-1
@@ -279,28 +269,29 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 			if len(tokens)>1:
 
 				mstime=tokens[0]
+				temporal_event=None
 				# action_event=None
 
-				#check which phase
+				#check which stage
 				if tokens[2]=="TRAINING":
-					phase="pretraining"
+					stage="pretraining"
 				if tokens[2]=="LEARNING":
-					phase="learning"
+					stage="learning"
 				if tokens[2]=="RE-EVALUATION":
-					phase="relearning"
+					stage="relearning"
 				if tokens[2]=="TESTING":
-					phase="test"
+					stage="test"
 				if tokens[2]=="POST-TEST":
-					phase="postnav_noreward"
+					stage="postnav_noreward"
 					measure=False
 				if tokens[2]=="MUSIC_BASELINE":
-					phase="music_baseline"
+					stage="music_baseline"
 				if tokens[2]=="IMAGE_BASELINE":
-					phase="image_baseline"
+					stage="image_baseline"
 				if tokens[2]=="SILENT_TRAVERSAL":
-					phase="silent_nav"
+					stage="silent_nav"
 				if tokens[2]=="END_SESSION":
-					phase="session_complete"
+					stage="session_complete"
 
 				if tokens[2]=="LEFT_CORRIDOR":
 					activeCorridor = 0
@@ -326,10 +317,18 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				if tokens[2]=="WAITING_FOR_REGISTER_PRESS":
 					if tokens[3]=="STARTED":
 						action_event="reward_chest_press"
+						temporal_event="chest_pos"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
 				#for door opening
 				elif tokens[2]=="WAITING_FOR_DOOR_PRESS":
 					if tokens[3]=="STARTED":
 						action_event="door_press"
+						temporal_event="door_pos"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
 				#for comparative sliders
 				if tokens[2]=="COMPARATIVE_PREF_SLIDER":
 					#check if the rooms being queried are starting rooms -- RoomOne and RoomTwo
@@ -356,9 +355,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 				if tokens[2]=="ACTION_BUTTON_PRESSED":
 					mstime = tokens[0]
-					if action_event==None:
-						action_event="passive_nav"
-					data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					action_event=None	
 
 
@@ -367,6 +364,9 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				if tokens[2]=="DecisionBody":
 					posX = float(tokens[4])
 					posZ= float(tokens[6])
+					# mstime = tokens[0]
+					# data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
 
 
 				#check whichroom player is in currently
@@ -379,17 +379,25 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 				if tokens[2]=="ROOM_2_MOVE":
 					if tokens[3]=="STARTED":
+						temporal_event="door_open"
 						if activeCorridor==0:
 							whichroom="room3"
 						else:
 							whichroom="room4"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
 							
 				if tokens[2]=="ROOM_3_MOVE":
 					if tokens[3]=="STARTED":
+						temporal_event="door_open"
 						if activeCorridor==0:
 							whichroom="room5"
 						else:
 							whichroom="room6"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
 							
 
 				#check which env
@@ -426,7 +434,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						mstime = tokens[0]
 						reward=leftReward
 						print("left reward " + str(mstime))
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action,leftReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,leftReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogLeft[envIndex,0]==0:
 							ogLeft[envIndex,0]=leftReward
 					else:
@@ -434,7 +442,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						mstime = tokens[0]
 						print("right reward")
 						reward=rightReward
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action,rightReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,rightReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogRight[envIndex,0]==0:
 							ogRight[envIndex,0]=rightReward
 
@@ -445,7 +453,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					if tokens[3]=="STARTED":
 						temporal_event="instruction_video"
 						print("inside inst video " + str(mstime) )
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[3]=="ENDED":
 						temporal_event=None
 
@@ -453,21 +461,21 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					if tokens[4]=="1":
 						temporal_event="ITI_msg"
 						music=None #make sure to turn off the music marker in case "AUDIO_STOPPED" message doesn't get logged
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[4]=="0":
 						temporal_event=None
 
 				elif tokens[2]=="PositiveFeedback":
 					if tokens[4]=="1":
 						temporal_event="cam_correct_msg"
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[4]=="0":
 						temporal_event=None
 
 				elif tokens[2]=="NegativeFeedback":
 					if tokens[4]=="1":
 						temporal_event="cam_incorrect_msg"
-						data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[4]=="0":
 						temporal_event=None
 
@@ -481,13 +489,13 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 								keyExists=True
 						if not keyExists:
 							print("key create " + str(mstime))
-							data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						else:	
 							print("key " + str(mstime))
 							data[mstime]['temporal_event']=temporal_event
 						# data[mstime] = makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					if tokens[3]=="OFF":
-						reward=None
+						reward=0
 						temporal_event=None
 
 
@@ -529,37 +537,40 @@ def thief_test(protocol, subject, montage, experiment, session, base_dir='/data/
 	exp_path = os.path.join(base_dir, subject, 'behavioral', experiment)
 	# files = {'session_log': os.path.join(exp_path, 'session_%d' % session, 'treasure.par'),
 			 # 'annotations': ''}
-	files = {'treasure_par': os.path.join(exp_path,'treasure.par'),
+	files = {'thief_par': os.path.join(exp_path,'thief.par'),
 			 'session_log': os.path.join(exp_path, subject+'Log.txt')}
 
-	parser = THSessionLogParser(protocol, subject, montage, experiment, session, files)
+
+	print("THE FILES ARE  " + str(files))
+
+	parser = ThiefSessionLogParser(protocol, subject, montage, experiment, session, files)
 	return parser
 
-if __name__ == '__main__':
-	parser = argparse.ArgumentParser()
-	parser.add_argument("subject", help="subject name")
-	parser.add_argument("session", help="session number", type=int)
-	parser.add_argument("log_path", help="path to log file")
-	parser.add_argument("--protocol", help="protocol string, for compatability with other events", default='jacobs_beh')
-	parser.add_argument("--montage", help="montage number, for compatability with ECoG events", default=0, type=int)
-	args = parser.parse_args()
+# if __name__ == '__main__':
+# 	parser = argparse.ArgumentParser()
+# 	parser.add_argument("subject", help="subject name")
+# 	parser.add_argument("session", help="session number", type=int)
+# 	parser.add_argument("log_path", help="path to log file")
+# 	parser.add_argument("--protocol", help="protocol string, for compatability with other events", default='jacobs_beh')
+# 	parser.add_argument("--montage", help="montage number, for compatability with ECoG events", default=0, type=int)
+# 	args = parser.parse_args()
 
-	# get the base directory. Will save events in same place as log file
-	log_dir = os.path.split(args.log_path)[0]
-	files = {'treasure_par': os.path.join(log_dir,'treasure.par'),
-			 'session_log': args.log_path}
+# 	# get the base directory. Will save events in same place as log file
+# 	log_dir = os.path.split(args.log_path)[0]
+# 	files = {'thief_par': os.path.join(log_dir,'thief.par'),
+# 			 'session_log': args.log_path}
 
-	# create the parser
-	parser = ThiefSessionLogParser(args.protocol, args.subject, args.montage,
-			 'TH_BEH', args.session, files)
+# 	# create the parser
+# 	parser = ThiefSessionLogParser(args.protocol, args.subject, args.montage,
+# 			 'TH_BEH', args.session, files)
 
-	# parse the data to create the events
-	events = parser.parse()
+# 	# parse the data to create the events
+# 	events = parser.parse()
 
-	# save the events
-	save_fname = os.path.join(log_dir, args.subject+'_session_%d.json' % args.session)
-	with fileutil.open_with_perms(save_fname, 'w') as f:
-		f.write(to_json(events))
+# 	# save the events
+# 	save_fname = os.path.join(log_dir, args.subject+'_session_%d.json' % args.session)
+# 	with fileutil.open_with_perms(save_fname, 'w') as f:
+# 		f.write(to_json(events))
 
 
 
