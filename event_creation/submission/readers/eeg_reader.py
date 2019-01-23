@@ -779,7 +779,7 @@ class NSx_reader(EEG_reader):
             # cluster cutting
             if self.nsx_info['sample_rate'] == 30000:
                 logger.info('Saving raw to .mat file: %s: %s' % (label, channel))
-                savemat(filename+'.mat', {'data': data, 'sr': 30000})
+                savemat(filename+'_orig_sr.mat', {'data': data, 'sr': 30000})
 
             # now downsample the data and save out
             ds_data, ds_sr = self._my_downsample(data[0], 30000, 2000)
