@@ -14,17 +14,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		:return:
 		"""
 		return (
-			('condition','None','S16'),
-			('env','nan','S16'),
-			('stage','nan','S16'),
-			('action','nan','S16'),
+			('condition','nan','S32'),
+			('env','nan','S32'),
+			('stage','nan','S32'),
+			('action','nan','S32'),
 			('reward', 0, 'int16'),
-			('whichroom','nan','S16'),
-			('whichtraj','nan','S16'),
+			('whichroom','nan','S32'),
+			('whichtraj','nan','S32'),
 			('posX',-1,'float'),
 			('posZ',-1,'float'),
-			('temporal_event','nan','S16'),
-			('music','nan','S16')
+			('temporal_event','nan','S32'),
+			('music','nan','S32')
 		)
 
 
@@ -37,16 +37,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		# create parsed log file treasure.par from original log file before BaseSessionLogParser
 		# is initialized
 		files['thief_par'] = os.path.join(os.path.dirname(files['session_log']), 'thief.par')
+		print(files['thief_par'])
 		
 		self.parse_raw_log(files['session_log'],files['thief_par'])
 		super(ThiefSessionLogParser, self).__init__(protocol, subject, montage, experiment, session, files,
 												 primary_log='thief_par',
-												 include_stim_params=False, allow_unparsed_events=True)
+												 include_stim_params=True, allow_unparsed_events=True)
 
 		# remove msoffset field because it does not exist in the TH log
 		self._fields = tuple([x for x in self._fields if x[0] != 'msoffset'])
 		self._log_header = ''
-		self._condition=None
+		self._condition="nan"
 		self._env=None
 		self._stage=None
 		self._action=None
@@ -63,12 +64,13 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		self._add_fields(*self._thief_fields())
 		self._add_type_to_new_event(
 			condition=self.event_header,
+			nan=self.event_line,
             reward_reval=self.event_line,
-            transition_reval=self.event_line
+            trans_reval=self.event_line
 		)
-		self._add_type_to_modify_events(
-			condition=self.modify_header
-		)
+		# self._add_type_to_modify_events(
+		# 	condition=self.modify_header
+		# )
 
 	# Any reason to not have all the fields persist in TH?
 	@staticmethod
@@ -81,6 +83,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Overiding BaseSessionLogParser._empty_event because we don't have msoffset field
 		"""
+		# print("empty event")
 		event = self.event_from_template(self._fields)
 		event.protocol = self._protocol
 		event.subject = self._subject
@@ -93,6 +96,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""
 		Override base class's default event to TH specific events.
 		"""
+		# print("default event")
 		event = self._empty_event
 		event.mstime = int(split_line[self._MSTIME_INDEX])
 		event.condition=self._condition
@@ -114,6 +118,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		"""I don't really want an event for this line, I'm just doing it to get the header. Getting the header because
 		some old log files don't have the stimList column, and we need to know if that exists. Could do it based on the
 		column number, but I feel like this is safer in case the log file changes."""
+		# print("event line " + str(split_line))
 		self._log_header = split_line
 		split_line[0] = -999
 		# split_line[1] = 'dummy'
@@ -126,8 +131,9 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 	def set_event_properties(self, split_line):
 
+		# print("log head " + str(self._log_header))
 		ind = self._log_header.index('condition')
-		self.condition = split_line[ind]
+		self._condition = split_line[ind]
 
 		ind = self._log_header.index('env')
 		self._env = split_line[ind]
@@ -185,8 +191,10 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		def writeToFile(f,data,subject):
 			columnOrder = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
 			strToWrite = ''
+			# print(data)
 			for col in columnOrder:
 				line = data[col]
+				# print(line)
 				if col != columnOrder[-1]:
 					strToWrite += '%s\t'%(line)
 				else:
@@ -200,6 +208,8 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 			emptyDict = dict(zip(fields,vals))
 			return emptyDict
 
+
+		#deprecated
 		def getPresDictKey(data,recItem,trialNum):
 			for key in data:
 				if data[key]['condition'] == recItem and data[key]['type'] == 'CHEST' and data[key]['trial'] == trialNum:
@@ -224,7 +234,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		data = {}
 		chest = None
 		env=None
-		condition=None
+		condition="nan"
 		stage=None
 		action=None
 		posX=-1
@@ -235,9 +245,11 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		activeCorridor=-1 # to keep track of which corridor the player is in; 0 = left ; 1= right
 		whichroom=None
 		whichtraj=None
+		camPos=-1000 
 		action_event=None
 		ogLeft=np.zeros([2,1],dtype=float)
 		ogRight=np.zeros([2,1],dtype=float)
+		camDistance=100
 		room_img_dict= { 'RestaurantRoom': 'RoomFive_Space', 'CryoRoom' : 'RoomSix_Space',
 					  'Restroom' : 'RoomFive_Office', 'ConferenceRoom' : 'RoomSix_Office',
 					   'RoomOne' : 'RoomSix_WesternTown' , 'RoomTwo' : 'RoomFive_WesternTown',
@@ -293,27 +305,21 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					condition="reward_reval"
 				if tokens[2]=="END_ENVIRONMENT_STAGE":
 					if tokens[3]=="ON":
-						condition=None
+						condition="nan"
 						music=None
+
+
+
+				#position of player; we parse this first to create an event line with the player position and are OK if it gets overwritten with additional info like temporal_event and action further down the script 
+				if tokens[2]=="DecisionBody":
+					posX = float(tokens[4])
+					posZ= float(tokens[6])
+					mstime = tokens[0]
+					data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 
 
 				#actions
 
-				#for reward opening 
-				if tokens[2]=="WAITING_FOR_REGISTER_PRESS":
-					if tokens[3]=="STARTED":
-						action_event="reward_chest_press"
-						temporal_event="chest_pos"
-						mstime = tokens[0]
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					
-				#for door opening
-				elif tokens[2]=="WAITING_FOR_DOOR_PRESS":
-					if tokens[3]=="STARTED":
-						action_event="door_press"
-						temporal_event="door_pos"
-						mstime = tokens[0]
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					
 				#for comparative sliders
 				if tokens[2]=="COMPARATIVE_PREF_SLIDER":
@@ -339,53 +345,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				if tokens[2]=="CAM_SNEAKING":
 					action_event="cam_press"
 
-				if tokens[2]=="ACTION_BUTTON_PRESSED":
-					mstime = tokens[0]
-					data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					action_event=None	
-
-
-
-				#position
-				if tokens[2]=="DecisionBody":
-					posX = float(tokens[4])
-					posZ= float(tokens[6])
-					# mstime = tokens[0]
-					# data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					
-
-
-				#check whichroom player is in currently
-				if tokens[2]=="ROOM_1_MOVE":
-					if tokens[3]=="STARTED":
-						if activeCorridor==0:
-							whichroom="room1"
-						else:
-							whichroom="room2"
-
-				if tokens[2]=="ROOM_2_MOVE":
-					if tokens[3]=="STARTED":
-						temporal_event="door_open"
-						if activeCorridor==0:
-							whichroom="room3"
-						else:
-							whichroom="room4"
-						mstime = tokens[0]
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					
-							
-				if tokens[2]=="ROOM_3_MOVE":
-					if tokens[3]=="STARTED":
-						temporal_event="door_open"
-						if activeCorridor==0:
-							whichroom="room5"
-						else:
-							whichroom="room6"
-						mstime = tokens[0]
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					
-							
-
 				#check which env
 				if tokens[2] == "ENVIRONMENT_CHOSEN":
 					measure=True
@@ -395,6 +354,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					solo_first_index=0
 					solo_second_index=0
 					solo_index=0
+#                     print("NEW ENVIRONMENT")
 					if tokens[3] == "Office":
 						env="office"
 						secondEnvName= "Office"
@@ -412,23 +372,98 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						envIndex = 1
 						secondEnvName = "Apartment"
 
+
+				#calc distance from cam
+				if env=="space":
+					camDistance = abs(posX-camPos)
+				else:
+					camDistance = abs(posZ-camPos)
+
+				#check to see if the current mstime key has already been made before we parse through temporal events; this is to prevent overwriting of events
+				keyExists=False
+				for key in data:
+					if key==mstime:
+						keyExists=True
+
+
+
+				#below are time-sensitive events that are ordered based on their priority; chest rewards are parsed through first and less time-sensitive events like "nav" are parsed at the end
+
 				#check if we are at the chest reward event
 				if tokens[2] == "REGISTER_REWARD":
 					if tokens[4]=="LEFT":
 						leftReward=int(tokens[3])
 						mstime = tokens[0]
 						reward=leftReward
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,leftReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,leftReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogLeft[envIndex,0]==0:
 							ogLeft[envIndex,0]=leftReward
 					else:
 						rightReward = int(tokens[3])
 						mstime = tokens[0]
 						reward=rightReward
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action,rightReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,rightReward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						if ogRight[envIndex,0]==0:
 							ogRight[envIndex,0]=rightReward
 
+
+				#second we parse through button presses which are of high-importance
+				elif tokens[2]=="ACTION_BUTTON_PRESSED":
+					mstime = tokens[0]
+					#this is the closest we have to a logged line to chest opening/ when the button press to open chest is logged happens right after chest opening animation begins 
+					if temporal_event=="chest_pos":
+						temporal_event="chest_opens"
+					data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					action_event=None	
+				#for reward opening 
+				elif tokens[2]=="WAITING_FOR_REGISTER_PRESS":
+					if tokens[3]=="STARTED":
+						camDistance=1000 #set this as a flag to stop looking for camera_pos events
+						action_event="reward_chest_press"
+						temporal_event="chest_pos"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
+				#for door opening
+				elif tokens[2]=="WAITING_FOR_DOOR_PRESS":
+					if tokens[3]=="STARTED":
+						if action_event !="reward_chest_press": #log this only if we aren't also waiting for a reward_chest_press event
+							action_event="door_press"
+							temporal_event="door_pos"
+							mstime = tokens[0]
+							data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+			
+
+				#third we parse through room-entry
+
+				#check whichroom player is in currently
+				elif tokens[2]=="ROOM_1_MOVE":
+					if tokens[3]=="STARTED":
+						if activeCorridor==0:
+							whichroom="room1"
+						else:
+							whichroom="room2"
+
+				elif tokens[2]=="ROOM_2_MOVE":
+					if tokens[3]=="STARTED":
+						temporal_event="door_opens"
+						if activeCorridor==0:
+							whichroom="room3"
+						else:
+							whichroom="room4"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					
+							
+				elif tokens[2]=="ROOM_3_MOVE":
+					if tokens[3]=="STARTED":
+						temporal_event="door_opens"
+						if activeCorridor==0:
+							whichroom="room5"
+						else:
+							whichroom="room6"
+						mstime = tokens[0]
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 
 
 				#check which temporal event
@@ -464,10 +499,6 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				elif tokens[2]=="REWARD_TEXT":
 					if tokens[3]=="ON":
 						temporal_event="reward_shows"
-						keyExists=False
-						for key in data:
-							if key==mstime:
-								keyExists=True
 						if not keyExists:
 							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						else:	
@@ -476,8 +507,18 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					if tokens[3]=="OFF":
 						reward=0
 						temporal_event=None
-
-
+				elif camDistance < 10:
+					temporal_event="camera_pos"
+					if not keyExists:
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					else:	
+						data[mstime]['temporal_event']=temporal_event
+				else:
+					temporal_event="nav"
+					if not keyExists:
+						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					else:	
+						data[mstime]['temporal_event']=temporal_event
 
 				#music tracks
 				if "_Audio" in tokens[2]:
@@ -490,12 +531,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 								# data[mstime]= makeEmptyDict(mstime,condition,env,phase,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music_track_dict[tracks])
 
-				# elif "CamZone" in tokens[2] and tokens[3]=="POSITION":
+				if "CamZone" in tokens[2] and tokens[3]=="POSITION":
+					if env=="space":
+						camPos = float(tokens[4]) #take the x-position as the movement happens along that axis
+					else:
+						camPos= float(tokens[6]) #else take the z-axis position
 
 
 
 				
 		# make sure all the events are in order, and write to new file
+		# print(data)
 		sortedKeys = sorted(data)
 		for key in sortedKeys:
 			writeToFile(out_file,data[key],subject)
@@ -517,6 +563,8 @@ def thief_test(protocol, subject, montage, experiment, session, base_dir='/data/
 			 # 'annotations': ''}
 	files = {'thief_par': os.path.join(exp_path,'thief.par'),
 			 'session_log': os.path.join(exp_path, subject+'Log.txt')}
+
+
 
 	parser = ThiefSessionLogParser(protocol, subject, montage, experiment, session, files)
 	return parser
