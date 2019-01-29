@@ -14,7 +14,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		:return:
 		"""
 		return (
-			('condition','nan','S32'),
+			('condition','none','S32'),
 			('env','nan','S32'),
 			('stage','nan','S32'),
 			('action','nan','S32'),
@@ -37,7 +37,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		# create parsed log file treasure.par from original log file before BaseSessionLogParser
 		# is initialized
 		files['thief_par'] = os.path.join(os.path.dirname(files['session_log']), 'thief.par')
-		print(files['thief_par'])
+		# print(files['thief_par'])
 		
 		self.parse_raw_log(files['session_log'],files['thief_par'])
 		super(ThiefSessionLogParser, self).__init__(protocol, subject, montage, experiment, session, files,
@@ -47,7 +47,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		# remove msoffset field because it does not exist in the TH log
 		self._fields = tuple([x for x in self._fields if x[0] != 'msoffset'])
 		self._log_header = ''
-		self._condition="nan"
+		self._condition="none"
 		self._env=None
 		self._stage=None
 		self._action=None
@@ -64,7 +64,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		self._add_fields(*self._thief_fields())
 		self._add_type_to_new_event(
 			condition=self.event_header,
-			nan=self.event_line,
+			none=self.event_line, #removed because it causes the JSON file to be exponentially large
             reward_reval=self.event_line,
             trans_reval=self.event_line
 		)
@@ -234,7 +234,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		data = {}
 		chest = None
 		env=None
-		condition="nan"
+		condition="none"
 		stage=None
 		action=None
 		posX=-1
@@ -305,17 +305,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					condition="reward_reval"
 				if tokens[2]=="END_ENVIRONMENT_STAGE":
 					if tokens[3]=="ON":
-						condition="nan"
+						condition="none"
 						music=None
 
 
 
 				#position of player; we parse this first to create an event line with the player position and are OK if it gets overwritten with additional info like temporal_event and action further down the script 
-				if tokens[2]=="DecisionBody":
+				if tokens[2]=="DecisionBody" and stage!=None:
 					posX = float(tokens[4])
 					posZ= float(tokens[6])
-					mstime = tokens[0]
-					data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					# mstime = tokens[0]
+					# data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 
 
 				#actions
@@ -345,7 +345,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				if tokens[2]=="CAM_SNEAKING":
 					action_event="cam_press"
 
-				#check which env
+				#check which environment
 				if tokens[2] == "ENVIRONMENT_CHOSEN":
 					measure=True
 					first_dev_index=0
@@ -507,18 +507,19 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					if tokens[3]=="OFF":
 						reward=0
 						temporal_event=None
-				elif camDistance < 10:
+				elif camDistance < 10 and stage!=None:
 					temporal_event="camera_pos"
 					if not keyExists:
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					else:	
 						data[mstime]['temporal_event']=temporal_event
-				else:
-					temporal_event="nav"
-					if not keyExists:
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					else:	
-						data[mstime]['temporal_event']=temporal_event
+				elif stage!=None:
+					if temporal_event==None:
+						temporal_event="nav"
+						if not keyExists:
+							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						else:	
+							data[mstime]['temporal_event']=temporal_event
 
 				#music tracks
 				if "_Audio" in tokens[2]:
