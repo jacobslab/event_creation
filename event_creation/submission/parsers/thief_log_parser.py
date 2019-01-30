@@ -247,6 +247,8 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		whichtraj=None
 		camPos=-1000 
 		action_event=None
+		camTracking=False #keeps track of whether camera position press should be active or not
+		prevMS = 0 #stores the timestamp of the previous line 
 		ogLeft=np.zeros([2,1],dtype=float)
 		ogRight=np.zeros([2,1],dtype=float)
 		camDistance=100
@@ -267,9 +269,13 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 			if len(tokens)>1:
 
 				mstime=tokens[0]
-				temporal_event=None
-				# action_event=None
+				if mstime!=prevMS:
+					if temporal_event!="chest_pos" and temporal_event!="door_pos":
+						temporal_event=None
 
+				prevMS=mstime
+				# action_event=None
+				# print("stage " + str(stage))
 				#check which stage
 				if tokens[2]=="TRAINING":
 					stage="pretraining"
@@ -372,12 +378,13 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						envIndex = 1
 						secondEnvName = "Apartment"
 
-
+				#check if we should be concerned with camera tracking; this is disabled during door and chest events as well as UI events	
+				if camTracking:
 				#calc distance from cam
-				if env=="space":
-					camDistance = abs(posX-camPos)
-				else:
-					camDistance = abs(posZ-camPos)
+					if env=="space":
+						camDistance = abs(posX-camPos)
+					else:
+						camDistance = abs(posZ-camPos)
 
 				#check to see if the current mstime key has already been made before we parse through temporal events; this is to prevent overwriting of events
 				keyExists=False
@@ -422,14 +429,16 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						action_event="reward_chest_press"
 						temporal_event="chest_pos"
 						mstime = tokens[0]
+						camDistance=1000
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 					
 				#for door opening
-				elif tokens[2]=="WAITING_FOR_DOOR_PRESS":
+				elif tokens[2]=="WAITING_FOR_DOOR_PRESS" and temporal_event!="chest_pos":
 					if tokens[3]=="STARTED":
 						if action_event !="reward_chest_press": #log this only if we aren't also waiting for a reward_chest_press event
 							action_event="door_press"
 							temporal_event="door_pos"
+							camDistance=1000
 							mstime = tokens[0]
 							data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 			
@@ -439,13 +448,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				#check whichroom player is in currently
 				elif tokens[2]=="ROOM_1_MOVE":
 					if tokens[3]=="STARTED":
+						camTracking=True
 						if activeCorridor==0:
 							whichroom="room1"
 						else:
 							whichroom="room2"
+					if tokens[3]=="ENDED":
+						camTracking=False
 
 				elif tokens[2]=="ROOM_2_MOVE":
 					if tokens[3]=="STARTED":
+						camTracking=True
 						temporal_event="door_opens"
 						if activeCorridor==0:
 							whichroom="room3"
@@ -453,10 +466,13 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 							whichroom="room4"
 						mstime = tokens[0]
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					if tokens[3]=="ENDED":
+						camTracking=False
 					
 							
 				elif tokens[2]=="ROOM_3_MOVE":
 					if tokens[3]=="STARTED":
+						camTracking=True
 						temporal_event="door_opens"
 						if activeCorridor==0:
 							whichroom="room5"
@@ -464,6 +480,8 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 							whichroom="room6"
 						mstime = tokens[0]
 						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+					if tokens[3]=="ENDED":
+						camTracking=False
 
 
 				#check which temporal event
@@ -507,17 +525,17 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 					if tokens[3]=="OFF":
 						reward=0
 						temporal_event=None
-				elif camDistance < 10 and stage!=None:
-					temporal_event="camera_pos"
-					if not keyExists:
-						data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
-					else:	
-						data[mstime]['temporal_event']=temporal_event
+				elif camDistance < 5 and stage!=None and camTracking:
+						temporal_event="camera_pos"
+						if not keyExists:
+							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+						else:	
+							data[mstime]['temporal_event']=temporal_event
 				elif stage!=None:
 					if temporal_event==None:
 						temporal_event="nav"
 						if not keyExists:
-							data[mstime] = makeEmptyDict(mstime,condition,env,stage,action_event,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+								data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 						else:	
 							data[mstime]['temporal_event']=temporal_event
 
