@@ -188,13 +188,12 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 	@staticmethod
 	def parse_raw_log(raw_log_file, out_file_path):
+		#file gets written via this function
 		def writeToFile(f,data,subject):
 			columnOrder = ['mstime','condition','env','stage','action','reward','whichroom','whichtraj','posX','posZ','temporal_event','music']
 			strToWrite = ''
-			# print(data)
 			for col in columnOrder:
 				line = data[col]
-				# print(line)
 				if col != columnOrder[-1]:
 					strToWrite += '%s\t'%(line)
 				else:
@@ -209,7 +208,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 			return emptyDict
 
 
-		#deprecated
+		#DEPRECATED
 		def getPresDictKey(data,recItem,trialNum):
 			for key in data:
 				if data[key]['condition'] == recItem and data[key]['type'] == 'CHEST' and data[key]['trial'] == trialNum:
@@ -221,7 +220,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		in_file = open(raw_log_file, 'r')
 		out_file = open(out_file_path, 'w')
 
-		# file to keep track of player pather
+		# file to keep track of player paths / NOT USED IN SH
 		playerPathsFile = open(os.path.join(sess_dir,"playerPaths.par"), 'w')
 
 		# write log header
@@ -247,11 +246,14 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		whichtraj=None
 		camPos=-1000 
 		action_event=None
+		sliderActive=False
 		camTracking=False #keeps track of whether camera position press should be active or not
 		prevMS = 0 #stores the timestamp of the previous line 
 		ogLeft=np.zeros([2,1],dtype=float)
 		ogRight=np.zeros([2,1],dtype=float)
 		camDistance=100
+		instruction_msg_arr = ['IntroInstructionScreen','TrainingInstructionScreen']
+		slider_arr=['COMPARATIVE_PREF_SLIDER','COMPARATIVE_SOLO_SLIDER']
 		room_img_dict= { 'RestaurantRoom': 'RoomFive_Space', 'CryoRoom' : 'RoomSix_Space',
 					  'Restroom' : 'RoomFive_Office', 'ConferenceRoom' : 'RoomSix_Office',
 					   'RoomOne' : 'RoomSix_WesternTown' , 'RoomTwo' : 'RoomFive_WesternTown',
@@ -314,6 +316,21 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						condition="none"
 						music=None
 
+				#check if instruction msg
+				if tokens[2] in instruction_msg_arr:
+					if tokens[4]=="1":
+						temporal_event="instruction_msg"
+						mstime=tokens[0]
+						data[mstime]=makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
+				#check if slider is on
+				if tokens[2] in slider_arr:
+					sliderActive=True
+
+
+				if sliderActive:
+					temporal_event="slider_on"
+					mstime=tokens[0]
+					data[mstime]=makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
 
 
 				#position of player; we parse this first to create an event line with the player position and are OK if it gets overwritten with additional info like temporal_event and action further down the script 
@@ -417,6 +434,9 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 				#second we parse through button presses which are of high-importance
 				elif tokens[2]=="ACTION_BUTTON_PRESSED":
 					mstime = tokens[0]
+					#if slider_on temporal event was active, disable it now
+					if sliderActive:
+						sliderActive=False
 					#this is the closest we have to a logged line to chest opening/ when the button press to open chest is logged happens right after chest opening animation begins 
 					if temporal_event=="chest_pos":
 						temporal_event="chest_opens"
