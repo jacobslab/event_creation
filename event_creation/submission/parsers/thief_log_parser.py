@@ -552,7 +552,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						else:	
 							data[mstime]['temporal_event']=temporal_event
 				elif stage!=None:
-					if temporal_event==None:
+					if temporal_event==None and (posX!=prevPosX or posZ!=prevPosZ):
 						temporal_event="nav"
 						if not keyExists:
 								data[mstime] = makeEmptyDict(mstime,condition,env,stage,None,reward,whichroom,whichtraj,posX,posZ,temporal_event,music)
@@ -575,6 +575,9 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 						camPos = float(tokens[4]) #take the x-position as the movement happens along that axis
 					else:
 						camPos= float(tokens[6]) #else take the z-axis position
+
+				prevPosX=posX
+				prevPosZ=posZ
 
 
 
