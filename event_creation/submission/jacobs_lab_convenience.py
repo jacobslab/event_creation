@@ -412,12 +412,12 @@ def build_session_inputs(subject, new_experiment, session, info):
 
     if is_sys3:
         inputs['groups'] += ('system_3',)
-    if is_sys2 or new_experiment in ('FR3', 'PAL3', 'catFR3', 'TH3', 'PS2.1'):
+    if is_sys2 or new_experiment in ('FR3', 'PAL3', 'catFR3', 'TH3', 'SH','PS2.1'):
         inputs['groups'] += ('system_2',)
     elif is_sys1:
         inputs['groups'] += ('system_1',)
 
-    if experiment.startswith('PS') or experiment.startswith('TH') or experiment.startswith('YC'):
+    if experiment.startswith('PS') or experiment.startswith('TH') or experiment.startswith('YC') or experiment.startswith('SH'):
         inputs['do_math'] = False
 
     if experiment.startswith('FR') or experiment.startswith('catFR') or experiment.startswith('PAL'):
@@ -727,7 +727,7 @@ def prompt_for_session_inputs(inputs, **opts):
     elif opts.get('sys1', False):
         inputs['groups'] += ('system_1',)
 
-    if any(experiment.startswith(exp) for exp in ['PS', 'TH', 'Location']):
+    if any(experiment.startswith(exp) for exp in ['PS', 'TH', 'SH','Location']):
         inputs['do_math'] = False
 
     if experiment.startswith('FR') or experiment.startswith('catFR') or experiment.startswith('PAL'):

@@ -36,6 +36,11 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 		# create parsed log file treasure.par from original log file before BaseSessionLogParser
 		# is initialized
+		print(files)
+		print("session " + str(session))
+		exp_path="/home1/ansh.patel/data/eeg/"+str(subject)+"/behavioral/SH/session_"+str(session)+"/"
+		files = {'thief_par': os.path.join(exp_path,'thief.par'),
+			 'session_log': os.path.join(exp_path, subject+'Log.txt')}
 		files['thief_par'] = os.path.join(os.path.dirname(files['session_log']), 'thief.par')
 		# print(files['thief_par'])
 		
@@ -370,6 +375,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 				#check which environment
 				if tokens[2] == "ENVIRONMENT_CHOSEN":
+					print("environment CHOSEN")
 					measure=True
 					first_dev_index=0
 					firstTime=True
@@ -593,6 +599,7 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 		out_file.close()
 		os.chmod(out_file_path, 0o644)
 		playerPathsFile.close()
+		print("writing out into PAR file")
 
 		# save out total score
 		# scoreFile = open(os.path.join(sess_dir,"totalScore.txt"), 'w')
@@ -601,10 +608,10 @@ class ThiefSessionLogParser(BaseSessionLogParser):
 
 def thief_test(protocol, subject, montage, experiment, session, base_dir='/data/eeg/'):
 	exp_path = os.path.join(base_dir, subject, 'behavioral', experiment)
-	# files = {'session_log': os.path.join(exp_path, 'session_%d' % session, 'treasure.par'),
-			 # 'annotations': ''}
-	files = {'thief_par': os.path.join(exp_path,'thief.par'),
-			 'session_log': os.path.join(exp_path, subject+'Log.txt')}
+	files = {'session_log': os.path.join(exp_path, 'session_%d' % session, 'thief.par'),
+			 'annotations': ''}
+	# files = {'thief_par': os.path.join(exp_path,'thief.par'),
+	# 		 'session_log': os.path.join(exp_path, subject+'Log.txt')}
 
 
 
