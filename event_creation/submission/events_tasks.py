@@ -33,6 +33,7 @@ from .parsers.pal_sys3_log_parser import PALSys3LogParser
 from .parsers.ps_log_parser import PSLogParser
 from .parsers.th_log_parser import THSessionLogParser
 from .parsers.thr_log_parser import THSessionLogParser as THRSessionLogParser
+from .parsers.thief_log_parser import ThiefSessionLogParser
 from .parsers.math_parser import MathSessionLogParser
 from .parsers.hostpc_parsers import FRHostPCLogParser, catFRHostPCLogParser,\
         TiclFRParser
@@ -224,7 +225,7 @@ class EventCreationTask(PipelineTask):
             'catFR': CatFRSessionLogParser,
             'PS': PSLogParser,  # which has its own dispatching system ...
             'TH': THSessionLogParser,
-            # 'THIEF'
+            'SH' : ThiefSessionLogParser,
             'THR': THRSessionLogParser,
         }
         elif sys_num<3.3:
@@ -343,6 +344,7 @@ class EventCreationTask(PipelineTask):
                     events = aligner.align()
                 else:
                     if self.r1_sys_num == 2.0:
+                        print("aligning with SYS2")
                         aligner = System2Aligner(unaligned_events, files, db_folder, self.align_micros)
                     elif 3.0 <= self.r1_sys_num <= 3.4:
                         aligner = System3Aligner(unaligned_events, files, db_folder)

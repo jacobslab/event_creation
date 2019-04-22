@@ -245,6 +245,21 @@ files:
     origin_file: 'eeg.eeglog.up'
     destination: logs/eeg.eeglog
 
+#SH specific
+  - name: session_log
+    << : *FILE
+    groups : [r1, transfer, SH ]
+    origin_directory: *BEH_SESS_DIR
+    origin_file: '{code}Log.txt'
+    destination: logs/session_log.txt
+
+  - name: eeg_log
+    << : *FILE
+    groups: [ r1, transfer, SH, system_1 ]
+    origin_directory: *BEH_SESS_DIR
+    origin_file: 'eeg.eeglog.up'
+    destination: logs/eeg.eeglog
+
   ## System 1 (general)
 
   - name: eeg_log
