@@ -446,7 +446,8 @@ def montage_inputs_from_json(filename):
                     subject=subject,
                     code=code,
                     montage=info.get('montage', '0.0'),
-                    protocol='ltp' if subject.startswith('LTP') else 'r1' if subject.startswith('R') else None
+                    protocol='ltp' if subject.startswith('LTP') else 'r1' #MODIFIED so that post-RAM subjects end up in 'r1' folder as well 
+                    # if subject.startswith('R') else None
                 )
                 completed_codes.add(code)
                 yield inputs
@@ -462,7 +463,8 @@ def session_inputs_from_json(filename):
             for session in sessions:
                 info = sessions[session]
                 if 'protocol' not in info:
-                    info['protocol'] = 'ltp' if subject.startswith('LTP') else 'r1' if subject.startswith('R') else None
+                    info['protocol'] = 'ltp' if subject.startswith('LTP') else 'r1' #MODIFIED so that post-RAM subjects end up in 'r1' folder as well 
+                     # if subject.startswith('R') else None
                 inputs = build_session_inputs(subject, new_experiment, session, info)
                 yield inputs
 
@@ -636,7 +638,8 @@ def prompt_for_session_inputs(inputs, **opts):
     protocol = inputs.protocol
     if protocol is None:
         protocol = 'ltp' if experiment.startswith('ltp') else \
-                   'r1' if subject.startswith('R') else None
+                   'r1'  #MODIFIED so that post-RAM subjects end up in 'r1' folder as well  
+                   # if subject.startswith('R') else None
     groups = (protocol,)
 
     montage = inputs.montage
